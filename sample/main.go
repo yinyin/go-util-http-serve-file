@@ -46,7 +46,7 @@ func setupContentServer(contentFolderPath, contentZipPath string, contentEmbed b
 		if contentStorePrefix != "test-data" {
 			log.Printf("WARN: content store prefix (option `-prefix`) not set to `test-data`: [%s]", contentStorePrefix)
 		}
-		srv, err := httpservefile.NewServeFSWithPrefix(contentURLPathPrefix, contentRef, contentStorePrefix)
+		srv, err := httpservefile.NewServeFSWithPrefix(contentURLPathPrefix, contentRef, contentStorePrefix, time.Time{})
 		if nil != err {
 			log.Fatalf("ERROR: failed on setting up content server with fs.FS [%s]: %v", contentStorePrefix, err)
 			return nil
