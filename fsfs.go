@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"strings"
+	"time"
 )
 
 // ServeFS is an implementation of HTTPFileServer with fs.FS as
@@ -16,34 +17,39 @@ type ServeFS struct {
 	urlPathPrefixLen int
 	fsRef            fs.FS
 	fsPathPrefix     string
+	contentModTime   time.Time
 }
 
 // NewServeFSWithPrefixLength create an instance of ServeFS
-// with urlPathPrefixLen, fsRef and fsPathPrefix.
-func NewServeFSWithPrefixLength(urlPathPrefixLen int, fsRef fs.FS, fsPathPrefix string) (s *ServeFS, err error) {
+// with urlPathPrefixLen, fsRef, fsPathPrefix and contentModTime.
+func NewServeFSWithPrefixLength(urlPathPrefixLen int, fsRef fs.FS, fsPathPrefix string, contentModTime time.Time) (s *ServeFS, err error) {
 	if urlPathPrefixLen < 1 {
 		urlPathPrefixLen = 1
+	}
+	if contentModTime.IsZero() {
+		contentModTime = time.Now()
 	}
 	return &ServeFS{
 		urlPathPrefixLen: urlPathPrefixLen,
 		fsRef:            fsRef,
 		fsPathPrefix:     strings.Trim(path.Clean(fsPathPrefix), "/\\"),
+		contentModTime:   contentModTime,
 	}, nil
 }
 
 // NewServeFSWithPrefix create an instance of ServeFS with
-// urlPathPrefix, fsRef and fsPathPrefix.
+// urlPathPrefix, fsRef, fsPathPrefix and contentModTime.
 //
 // ** CAUTION **:
 // Prefix of URL path will NOT be check. Make sure such check is done at routing logic.
-func NewServeFSWithPrefix(urlPathPrefix string, fsRef fs.FS, fsPathPrefix string) (s *ServeFS, err error) {
+func NewServeFSWithPrefix(urlPathPrefix string, fsRef fs.FS, fsPathPrefix string, contentModTime time.Time) (s *ServeFS, err error) {
 	urlPathPrefix = sanitizeURLPathPrefix(urlPathPrefix)
-	return NewServeFSWithPrefixLength(len(urlPathPrefix), fsRef, fsPathPrefix)
+	return NewServeFSWithPrefixLength(len(urlPathPrefix), fsRef, fsPathPrefix, contentModTime)
 }
 
-// NewServeFS create an instance of ServeFS with fsRef and fsPathPrefix.
-func NewServeFS(fsRef fs.FS, fsPathPrefix string) (s *ServeFS, err error) {
-	return NewServeFSWithPrefixLength(1, fsRef, fsPathPrefix)
+// NewServeFS create an instance of ServeFS with fsRef, fsPathPrefix and contentModTime.
+func NewServeFS(fsRef fs.FS, fsPathPrefix string, contentModTime time.Time) (s *ServeFS, err error) {
+	return NewServeFSWithPrefixLength(1, fsRef, fsPathPrefix, contentModTime)
 }
 
 func (s *ServeFS) ServeHTTP(w http.ResponseWriter, r *http.Request, defaultFileName, targetFileName string) {
@@ -66,13 +72,11 @@ func (s *ServeFS) ServeHTTP(w http.ResponseWriter, r *http.Request, defaultFileN
 		return
 	}
 	defer fp.Close()
-	fileinfo, err := fp.Stat()
-	if nil != err {
+	if fileinfo, err := fp.Stat(); nil != err {
 		http.Error(w, "internal error (fs-FS)", http.StatusInternalServerError)
 		log.Printf("WARN: failed on stat file [%s]: %v", targetFilePath, err)
 		return
-	}
-	if fileinfo.IsDir() {
+	} else if fileinfo.IsDir() {
 		http.NotFound(w, r)
 		return
 	}
@@ -81,7 +85,7 @@ func (s *ServeFS) ServeHTTP(w http.ResponseWriter, r *http.Request, defaultFileN
 		http.Error(w, "internal error (fs-FS)", http.StatusInternalServerError)
 		log.Printf("WARN: failed on cast file reference [%s]: %v", targetFilePath, err)
 	}
-	http.ServeContent(w, r, targetFilePath, fileinfo.ModTime(), fAccess)
+	http.ServeContent(w, r, targetFilePath, s.contentModTime, fAccess)
 }
 
 // Close free used resources.
